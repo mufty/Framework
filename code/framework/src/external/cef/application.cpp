@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -28,20 +28,20 @@ namespace Framework::External::CEF {
     void Application::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) {}
 
     void Application::OnContextReleased(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) {
-        if(_scriptingEvents.empty()){
+        if (_scriptingEvents.empty()) {
             return;
         }
 
         // Erase the scripting events that only belongs to this context
         auto it = _scriptingEvents.begin();
-		while (it != _scriptingEvents.end()) {
-			if (it->first->IsSame(context)) {
-				it = _scriptingEvents.erase(it);
-			} else {
-				++it;
-			}
-		}
-
+        while (it != _scriptingEvents.end()) {
+            if (it->first->IsSame(context)) {
+                it = _scriptingEvents.erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
     }
 
     void Application::OnBeforeCommandLineProcessing(const CefString &processType, CefRefPtr<CefCommandLine> commandLine) {

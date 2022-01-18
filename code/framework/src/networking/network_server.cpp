@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -15,7 +15,7 @@
 namespace Framework::Networking {
     ServerError NetworkServer::Init(int32_t port, const std::string &host, int32_t maxPlayers, const std::string &password) {
         SLNet::SocketDescriptor newSocketSd = SLNet::SocketDescriptor(port, host.c_str());
-        SLNet::StartupResult result         = _peer->Startup(maxPlayers, &newSocketSd, 1); 
+        SLNet::StartupResult result         = _peer->Startup(maxPlayers, &newSocketSd, 1);
         if (result != SLNet::RAKNET_STARTED) {
             Logging::GetLogger(FRAMEWORK_INNER_NETWORKING)->critical("Failed to init the networking peer. Reason: {}", GetStartupResultString(result));
             return SERVER_PEER_FAILED;
@@ -36,17 +36,27 @@ namespace Framework::Networking {
 
     bool NetworkServer::HandlePacket(uint8_t packetID, SLNet::Packet *packet) {
         switch (packetID) {
+        case ID_NEW_INCOMING_CONNECTION: {
+            Framework::Logging::GetInstance()->Get(FRAMEWORK_INNER_NETWORKING)->debug("Incoming connection request {}", packet->guid.ToString());
+            if (_onPlayerConnectCallback) {
+                _onPlayerConnectCallback(packet);
+            }
+            return true;
+        } break;
+
         case ID_DISCONNECTION_NOTIFICATION: {
+            Framework::Logging::GetInstance()->Get(FRAMEWORK_INNER_NETWORKING)->debug("Disconnection from {}", packet->guid.ToString());
             if (_onPlayerDisconnectCallback) {
                 _onPlayerDisconnectCallback(_packet, Messages::GRACEFUL_SHUTDOWN);
-                return true;
             }
+            return true;
         } break;
         case ID_CONNECTION_LOST: {
+            Framework::Logging::GetInstance()->Get(FRAMEWORK_INNER_NETWORKING)->debug("Connection lost for {}", packet->guid.ToString());
             if (_onPlayerDisconnectCallback) {
                 _onPlayerDisconnectCallback(_packet, Messages::LOST);
-                return true;
             }
+            return true;
         } break;
         }
         return false;

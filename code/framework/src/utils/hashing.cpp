@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -9,7 +9,7 @@
 #include "hashing.h"
 
 namespace Framework::Utils::Hashing {
-    static const uint32_t crc32_table[256] = {
+    constexpr uint32_t crc32_table[256] = {
         0x00000000,
         0x77073096,
         0xee0e612c,

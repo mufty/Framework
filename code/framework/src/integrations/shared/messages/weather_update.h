@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -31,7 +31,7 @@ namespace Framework::Integrations::Shared::Messages {
             _weatherPreset = SLNet::RakString(preset.c_str());
         }
 
-        void Serialize(SLNet::BitStream* bs, bool write) override {
+        void Serialize(SLNet::BitStream *bs, bool write) override {
             bs->Serialize(write, _time);
             bs->Serialize(write, _updatePreset);
 

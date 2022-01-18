@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -12,28 +12,23 @@
 #include "errors.h"
 
 #include <flecs/flecs.h>
+
 #include <memory>
+#include <string>
 
 namespace Framework::World {
     class ServerEngine: public Engine {
-      private:
-        flecs::entity _streamEntities;
-        float _tickDelay = 7.183f;
-
       public:
-        EngineError Init() override;
+        EngineError Init(Framework::Networking::NetworkPeer *networkPeer, float tickInterval);
 
         EngineError Shutdown() override;
 
         void Update() override;
 
-        void SetTickInterval(float ms) {
-            _tickDelay = ms;
-            ecs_set_interval(_world->get_world(), _streamEntities.id(), ms);
-        }
+        flecs::entity CreateEntity(std::string name = "");
+        flecs::entity WrapEntity(flecs::entity_t serverID);
+        bool IsEntityOwner(flecs::entity e, uint64_t guid);
 
-        float GetTickInterval() const {
-            return _tickDelay;
-        }
+        void RemoveEntity(flecs::entity e);
     };
 } // namespace Framework::World

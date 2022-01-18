@@ -9,9 +9,13 @@ include_directories(PUBLIC
         "../vendors/json/include"
         "../vendors/slikenet/Source"
         "../vendors/ntdll"
+        "../vendors/semver"
+        "../vendors/imgui"
+        "../vendors/sdl2/include"
         "../vendors/spdlog/include"
         "../vendors/optick/src"
         "../vendors/steamworks/include"
+        "../vendors/galaxy/Include"
         "../vendors/udis86"
         "../vendors/httplib"
         "../vendors/cef"
@@ -22,6 +26,7 @@ include_directories(PUBLIC
         "../vendors/libsig"
         "../vendors/sfd"
         "../vendors/cxxopts"
+        "../vendors/freetype/include"
         "../vendors"
         )
 

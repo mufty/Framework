@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -34,10 +34,11 @@ namespace Framework::Graphics {
 
         if (_d3d11Backend) {
             _d3d11Backend->Shutdown();
-        } else if (_d3d9Backend) {
+        }
+        else if (_d3d9Backend) {
             _d3d9Backend->Shutdown();
         }
-        
+
         _initialized = false;
         return RendererError::RENDERER_NONE;
     }
@@ -50,4 +51,4 @@ namespace Framework::Graphics {
             _d3d9Backend->Update();
         }
     }
-} // namespace Framework::GUI
+} // namespace Framework::Graphics

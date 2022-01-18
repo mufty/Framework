@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -9,10 +9,13 @@
 #include "engine.h"
 
 #include "modules/base.hpp"
+
 #include <slikenet/types.h>
 
 namespace Framework::World {
-    EngineError Engine::Init() {
+    EngineError Engine::Init(Networking::NetworkPeer *networkPeer) {
+        _networkPeer = networkPeer;
+
         _world = std::make_unique<flecs::world>();
 
         // Register a base module
@@ -30,9 +33,9 @@ namespace Framework::World {
     void Engine::Update() {
         _world->progress();
     }
-    
+
     flecs::entity Engine::GetEntityByGUID(uint64_t guid) {
-        flecs::entity ourEntity;
+        flecs::entity ourEntity = {};
         _findAllStreamerEntities.iter([&ourEntity, guid](flecs::iter &it, Modules::Base::Streamer *s) {
             for (auto i : it) {
                 if (s[i].guid == guid) {

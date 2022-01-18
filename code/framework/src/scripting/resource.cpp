@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -16,6 +16,12 @@
 #include <logging/logger.h>
 #include <nlohmann/json.hpp>
 #include <optick.h>
+
+static const char envBootstrapper[] = R"(
+const publicRequire = require("module").createRequire(process.cwd() + "/resources/" + "{}" + "/");
+globalThis.require = publicRequire;
+require("vm").runInThisContext(process.argv[1]);
+)";
 
 namespace Framework::Scripting {
     Resource::Resource(Engine *engine, std::string &path, SDKRegisterCallback cb): _loaded(false), _isShuttingDown(false), _path(path), _engine(engine), _regCb(cb) {
@@ -158,14 +164,7 @@ namespace Framework::Scripting {
         node::IsolateSettings is;
         node::SetIsolateUpForNode(isolate, is);
 
-        std::string init = "const publicRequire ="
-                           "require('module').createRequire(process.cwd() + '/resources/"
-                           + _name
-                           + "/');"
-                             "globalThis.require = publicRequire;"
-                             "require('vm').runInThisContext(process.argv[1]);";
-
-        if (!node::LoadEnvironment(_environment, init.c_str()).IsEmpty())
+        if (!node::LoadEnvironment(_environment, fmt::format(envBootstrapper, _name).c_str()).IsEmpty())
             return false;
 
         Compile(content, entryPointFile.path());
@@ -299,6 +298,8 @@ namespace Framework::Scripting {
 
                 script = v8::Script::Compile(context, source, &scriptOrigin);
             }
+            if (script.IsEmpty())
+                return false;
 
             _script.Reset(isolate, script.ToLocalChecked());
             return true;

@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -48,11 +48,16 @@ namespace Framework::Networking {
             return CLIENT_PEER_NULL;
         }
 
+        if (!_peer->IsActive()) {
+            Init();
+        }
+
         _state = CONNECTING;
 
         SLNet::ConnectionAttemptResult result = _peer->Connect(host.c_str(), port, password.c_str(), password.length());
         if (result != SLNet::CONNECTION_ATTEMPT_STARTED) {
             Logging::GetLogger(FRAMEWORK_INNER_NETWORKING)->critical("Failed to connect to the remote host. Reason: {}", GetConnectionAttemptString(result));
+            _state = DISCONNECTED;
             return CLIENT_CONNECT_FAILED;
         }
 
@@ -63,7 +68,20 @@ namespace Framework::Networking {
         if (!_peer) {
             return CLIENT_PEER_NULL;
         }
+
+        if (_state == DISCONNECTED) {
+            Logging::GetLogger(FRAMEWORK_INNER_NETWORKING)->warn("Cannot disconnect, we are already disconnected.");
+            return CLIENT_NONE;
+        }
+
         _peer->Shutdown(100, 0, IMMEDIATE_PRIORITY);
+        Logging::GetLogger(FRAMEWORK_INNER_NETWORKING)->debug("Disconnecting from the server...");
+        
+        if (_onPlayerDisconnectedCallback) {
+            _onPlayerDisconnectedCallback(_packet, Messages::GRACEFUL_SHUTDOWN);
+        }
+        _state = DISCONNECTED;
+
         return CLIENT_NONE;
     }
 
@@ -77,60 +95,70 @@ namespace Framework::Networking {
 
     bool NetworkClient::HandlePacket(uint8_t packetID, SLNet::Packet *packet) {
         switch (packetID) {
-        case Messages::GAME_CONNECTION_FINALIZED: {
+        case ID_CONNECTION_REQUEST_ACCEPTED: {
+            if (_onPlayerConnectedCallback) {
+                _onPlayerConnectedCallback(_packet);
+            }
             _state = CONNECTED;
-            break;
-        }
+            return true;
+        } break;
+
         case ID_NO_FREE_INCOMING_CONNECTIONS: {
             if (_onPlayerDisconnectedCallback) {
                 _onPlayerDisconnectedCallback(_packet, Messages::NO_FREE_SLOT);
-                return true;
             }
+            _state = DISCONNECTED;
+            return true;
         } break;
 
         case ID_DISCONNECTION_NOTIFICATION: {
             if (_onPlayerDisconnectedCallback) {
                 _onPlayerDisconnectedCallback(_packet, Messages::GRACEFUL_SHUTDOWN);
-                return true;
             }
+            _state = DISCONNECTED;
+            return true;
         } break;
 
         case ID_CONNECTION_LOST: {
             if (_onPlayerDisconnectedCallback) {
                 _onPlayerDisconnectedCallback(_packet, Messages::LOST);
-                return true;
             }
+            _state = DISCONNECTED;
+            return true;
         } break;
 
         case ID_CONNECTION_ATTEMPT_FAILED: {
             if (_onPlayerDisconnectedCallback) {
                 _onPlayerDisconnectedCallback(_packet, Messages::FAILED);
-                return true;
             }
+            _state = DISCONNECTED;
+            return true;
         } break;
 
         case ID_INVALID_PASSWORD: {
             if (_onPlayerDisconnectedCallback) {
                 _onPlayerDisconnectedCallback(_packet, Messages::INVALID_PASSWORD);
-                return true;
             }
+            _state = DISCONNECTED;
+            return true;
         } break;
 
         case ID_CONNECTION_BANNED: {
             if (_onPlayerDisconnectedCallback) {
                 _onPlayerDisconnectedCallback(_packet, Messages::BANNED);
-                return true;
             }
+            _state = DISCONNECTED;
+            return true;
         } break;
         }
         return false;
     }
 
     int NetworkClient::GetPing() {
-        if (!_peer) {
+        if (!_peer || _state != CONNECTED) {
             return 0;
         }
 
-        return _peer->GetAveragePing(SLNet::UNASSIGNED_RAKNET_GUID);
+        return _peer->GetAveragePing(_peer->GetSystemAddressFromIndex(0));
     }
 } // namespace Framework::Networking

@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -23,6 +23,7 @@ namespace Framework::Networking {
       private:
         PeerState _state;
 
+        Messages::PacketCallback _onPlayerConnectedCallback;
         Messages::DisconnectPacketCallback _onPlayerDisconnectedCallback;
 
       public:
@@ -41,6 +42,14 @@ namespace Framework::Networking {
         ClientError Disconnect();
 
         int GetPing();
+
+        PeerState GetConnectionState() const {
+            return _state;
+        }
+
+        void SetOnPlayerConnectedCallback(Messages::PacketCallback callback) {
+            _onPlayerConnectedCallback = callback;
+        }
 
         void SetOnPlayerDisconnectedCallback(Messages::DisconnectPacketCallback callback) {
             _onPlayerDisconnectedCallback = callback;

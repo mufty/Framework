@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -21,7 +21,7 @@ namespace Framework::Scripting {
         ENGINE_ISOLATE_NULL
     };
 
-    enum class ResourceManagerError { RESOURCE_MANAGER_NONE, RESOURCE_ALREADY_LOADED, RESOURCE_NOT_LOADED, RESOURCE_LOADING_FAILED };
+    enum class ResourceManagerError { RESOURCE_MANAGER_NONE, RESOURCE_ALREADY_LOADED, RESOURCE_NOT_LOADED, RESOURCE_LOADING_FAILED, RESOURCE_NAME_INVALID };
 
     enum class BuiltinError { BUILTIN_NONE, BUILTIN_INVALID_PARAMETERS_COUNT, BUILTIN_INVALID_PARAMETER, BUILTIN_ISOLATE_NULL, BUILTIN_CONTEXT_EMPTY, BUILTIN_RESOURCE_NULL };
 

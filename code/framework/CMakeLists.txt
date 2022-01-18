@@ -1,7 +1,11 @@
+include(UpdateGitHash)
+update_git_version(FW "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/version.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
+
 # List the source files
 set(FRAMEWORK_SRC
         src/logging/logger.cpp
-
+    
+        ${CMAKE_CURRENT_BINARY_DIR}/version.cpp
         src/utils/delay_scope.cpp
         src/utils/config.cpp
         src/utils/interpolator.cpp
@@ -9,6 +13,8 @@ set(FRAMEWORK_SRC
         src/utils/job_system.cpp
         src/utils/command_processor.cpp
         src/utils/hashing.cpp
+        src/utils/states/machine.cpp
+        src/utils/states/state.cpp
 
         src/external/discord/wrapper.cpp
         src/external/sentry/wrapper.cpp
@@ -16,6 +22,7 @@ set(FRAMEWORK_SRC
         src/external/optick/wrapper.cpp
 
         src/world/engine.cpp
+        src/world/modules/modules_impl.cpp
 
         src/networking/network_peer.cpp
         src/networking/errors.cpp
@@ -56,15 +63,19 @@ set(FRAMEWORK_CLIENT_SRC
         src/external/cef/worker.hpp
 
         src/graphics/renderer.cpp
+        src/graphics/renderio.cpp
         src/gui/api/cef.cpp
 
         src/networking/network_client.cpp
 
         src/external/steam/wrapper.cpp
+        src/external/imgui/wrapper.cpp
+        src/external/sdl2/wrapper.cpp
 
         src/world/client.cpp
 
         src/integrations/client/instance.cpp
+        src/integrations/client/networking/engine.cpp
     )
 
 # Append the platform-dependent files to the related lists
@@ -86,8 +97,7 @@ if(WIN32)
         src/utils/hooking/hook_function.cpp
         src/utils/hooking/hooking_patterns.cpp
         src/utils/hooking/hooking.cpp
-        src/utils/memory.cpp
-    )
+        src/utils/memory.cpp)
     target_link_options(FrameworkLoader PUBLIC /IGNORE:4254 /SAFESEH:NO /DYNAMICBASE:NO /LARGEADDRESSAWARE /SUBSYSTEM:windows /SECTIONLAYOUT:@${CMAKE_CURRENT_SOURCE_DIR}/src/launcher/SectionLayout.txt)
 
     if (CMAKE_CL_64)
@@ -118,23 +128,25 @@ macro(link_shared_deps target_name)
         target_link_libraries(${target_name} "-framework CoreFoundation" "-framework Foundation" "-framework GSS" "-framework Security" "-framework CoreText" "-framework CoreGraphics" bsm)
     endif()
 
-    target_link_libraries(${target_name} slikenet glm spdlog cppfs nlohmann_json Sentry httplib ${OPENSSL_LIBRARIES} Firebase Curl OptickCore flecs_static)
+    target_link_libraries(${target_name} slikenet glm spdlog cppfs nlohmann_json Sentry httplib ${OPENSSL_LIBRARIES} Firebase Curl OptickCore flecs_static semver)
 endmacro()
 
 link_shared_deps(Framework)
 link_shared_deps(FrameworkServer)
 link_shared_deps(FrameworkClient)
 
+add_dependencies(FrameworkClient libcef_dll_wrapper CEFTarget)
+
 target_link_libraries(FrameworkServer mongoose NodeJS libsig)
-target_link_libraries(FrameworkClient DiscordSDK CefTarget)
+target_link_libraries(FrameworkClient DiscordSDK CEFTarget libcef_dll_wrapper DearImGUI SDL)
 
 # OS specific libraries
 if (WIN32)
     target_link_directories(Framework PUBLIC ${CMAKE_SOURCE_DIR}/vendors/openssl/lib)
     target_link_libraries(Framework ws2_32 dbghelp crypt32 winmm iphlpapi psapi userenv)
 
-    set(CLIENT_SHARED_LIBS minhook SteamSDK udis86)
-    target_link_libraries(FrameworkClient ${CLIENT_SHARED_LIBS})
+    set(CLIENT_SHARED_LIBS minhook GalaxySDK SteamSDK udis86)
+    target_link_libraries(FrameworkClient ${CLIENT_SHARED_LIBS} RmlCore ${FREETYPE_LIBRARY})
 
     link_shared_deps(FrameworkLoader)
     target_link_libraries(FrameworkLoader ${CLIENT_SHARED_LIBS} FrameworkLoaderData ntdll sfd)

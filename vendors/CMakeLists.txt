@@ -1,4 +1,5 @@
 set(BUILD_SHARED_LIBS CACHE BOOL OFF)
+set(BUILD_SAMPLES CACHE BOOL OFF)
 
 # Add OpenSSL
 if (WIN32)
@@ -33,6 +34,9 @@ endif ()
 # Build mongoose
 add_subdirectory(mongoose)
 
+# Build semver
+add_subdirectory(semver)
+
 # Build SPDLOG
 set(SPDLOG_BUILD_SHARED OFF)
 add_subdirectory(spdlog)
@@ -56,7 +60,6 @@ add_subdirectory(discord)
 
 # Build LibCEF
 add_subdirectory(cef)
-add_subdirectory(cef_target)
 
 # Build slikenet
 add_subdirectory(slikenet)
@@ -83,7 +86,7 @@ add_subdirectory(optick)
 add_subdirectory(nodejs)
 
 # Build flecs
-set(FLECS_SHARED_LIBBS CACHE BOOL "" OFF)
+set(FLECS_SHARED_LIBS CACHE BOOL "" OFF)
 add_subdirectory(flecs)
 
 # Build FMT
@@ -95,11 +98,49 @@ add_subdirectory(libsig)
 # Build sfd
 add_subdirectory(sfd)
 
+# Add freetype
+OPTION(ENABLE_FREETYPE_FROM_SOURCE "BUILD FREETYPE FROM SOURCE AT CONFIGURE TIME" ON)
+
+if (ENABLE_FREETYPE_FROM_SOURCE)
+    set(BUILD_FREETYPE_WORKING_DIR ${CMAKE_BINARY_DIR}/_external/build-freetype)
+    set(BUILD_FREETYPE_SRC_DIR ${CMAKE_SOURCE_DIR}/vendors/freetype)
+    set(BUILD_FREETYPE_INSTALL_DIR "${BUILD_FREETYPE_WORKING_DIR}/install")
+    file(MAKE_DIRECTORY ${BUILD_FREETYPE_WORKING_DIR})
+    if (NOT EXISTS ${BUILD_FREETYPE_INSTALL_DIR})
+        message(STATUS "Building freetype.. at ${BUILD_FREETYPE_WORKING_DIR}, Install DIR ${BUILD_FREETYPE_INSTALL_DIR}")
+        execute_process(
+                COMMAND ${CMAKE_COMMAND} ${BUILD_FREETYPE_SRC_DIR} -DINSTALL_DIR=${BUILD_FREETYPE_INSTALL_DIR}
+                WORKING_DIRECTORY ${BUILD_FREETYPE_WORKING_DIR}
+        )
+        execute_process(
+                COMMAND ${CMAKE_COMMAND} --build .
+                WORKING_DIRECTORY ${BUILD_FREETYPE_WORKING_DIR}
+        )
+        execute_process(
+                COMMAND ${CMAKE_COMMAND} --build . --target install
+                WORKING_DIRECTORY ${BUILD_FREETYPE_WORKING_DIR}
+        )
+    else ()
+        message(STATUS "${BUILD_FREETYPE_INSTALL_DIR} already exists, skips rebuilding..")
+    endif ()
+
+    set(FREETYPE_DIR freetype CACHE INTERNAL "FREETYPE ROOT DIR")
+    set(FREETYPE_LIBRARY "${BUILD_FREETYPE_INSTALL_DIR}/freetype.lib" CACHE INTERNAL "FREETYPE LIBRARY")
+    set(FREETYPE_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/vendors/freetype/include;${BUILD_FREETYPE_INSTALL_DIR}/freetype2" CACHE INTERNAL "FREETYPE INCLUDE DIRS")
+    include_directories("${BUILD_FREETYPE_INSTALL_DIR}/freetype2")
+    link_directories(${BUILD_FREETYPE_INSTALL_DIR})
+    message("Setting FREETYPE ROOT DIR to newly built freetype ${BUILD_FREETYPE_INSTALL_DIR}")
+endif ()
+
 # Build OS specific libraries
 if (WIN32)
     add_subdirectory(minhook)
     add_subdirectory(steamworks)
+    add_subdirectory(galaxy)
     add_subdirectory(udis86)
     add_subdirectory(ntdll)
+    add_subdirectory(imgui)
+    add_subdirectory(sdl2)
+    add_subdirectory(rmlui)
 endif ()
 

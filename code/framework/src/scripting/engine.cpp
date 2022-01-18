@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -12,13 +12,6 @@
 #include <optick.h>
 
 namespace Framework::Scripting {
-    Engine::~Engine() {
-        if (_resourceManager) {
-            _resourceManager->UnloadAll();
-            delete _resourceManager;
-        }
-    }
-
     EngineError Engine::Init(SDKRegisterCallback cb) {
         // Define the arguments to be passed to the node instance
         std::vector<std::string> argv = {"main.exe"};
@@ -125,6 +118,13 @@ namespace Framework::Scripting {
         v8::V8::Dispose();
         _platform.release();
 #endif
+
+        _platform.reset();
+        delete _resourceManager;
+
+        _isolate         = nullptr;
+        _platform        = nullptr;
+        _resourceManager = nullptr;
 
         return Framework::Scripting::EngineError::ENGINE_NONE;
     }

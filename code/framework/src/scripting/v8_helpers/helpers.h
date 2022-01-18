@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -220,6 +220,13 @@ namespace Framework::Scripting::V8Helpers {
     // Returns null
     inline v8::Local<v8::Primitive> JSValue(std::nullptr_t val) {
         return v8::Null(v8::Isolate::GetCurrent());
+    }
+
+    inline std::string GetCurrentSourceOrigin(v8::Isolate *isolate) {
+        auto stackTrace = v8::StackTrace::CurrentStackTrace(isolate, 1);
+        if (stackTrace->GetFrameCount() == 0)
+            return "";
+        return *v8::String::Utf8Value(isolate, stackTrace->GetFrame(isolate, 0)->GetScriptName());
     }
 } // namespace Framework::Scripting::V8Helpers
 

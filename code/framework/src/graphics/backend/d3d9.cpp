@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -9,7 +9,7 @@
 #include "d3d9.h"
 
 namespace Framework::Graphics {
-    bool D3D9Backend::Init(IDirect3D9 *device, IDirect3D9 *_nothing) {
+    bool D3D9Backend::Init(IDirect3DDevice9 *device, void *_nothing) {
         _device = device;
 
         return true;
@@ -19,7 +19,5 @@ namespace Framework::Graphics {
         return true;
     }
 
-    void D3D9Backend::Update() {
-
-    }
-} // namespace Framework::GUI
+    void D3D9Backend::Update() {}
+} // namespace Framework::Graphics

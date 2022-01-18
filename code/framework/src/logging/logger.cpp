@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -44,7 +44,7 @@ namespace Framework::Logging {
         consoleLogger->set_level(spdlog::level::debug);
         consoleLogger->set_pattern("[%H:%M:%S] [%n] [%^%l%$] %v");
 
-        const auto fileLogName = "logs/" + _logName + ".log";
+        const auto fileLogName = _logFolder + "/" + _logName + ".log";
         auto fileLogger        = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(fileLogName, _maxFileSize, _maxFileCount);
         fileLogger->set_level(spdlog::level::trace);
 
@@ -53,7 +53,12 @@ namespace Framework::Logging {
         spdLogger->set_level(spdlog::level::trace);
         spdlog::register_logger(spdLogger);
 
-        _loggers.emplace(logName, spdLogger);
+        try {
+            _loggers.emplace(logName, spdLogger);
+        }
+        catch (std::exception &ex) {
+        }
+
         return spdLogger;
     }
 

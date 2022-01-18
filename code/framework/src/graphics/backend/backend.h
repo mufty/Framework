@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -19,7 +19,7 @@ namespace Framework::Graphics {
         Backend() = default;
 
         virtual bool Init(TDevice device, TContext context) = 0;
-        virtual bool Shutdown()     = 0;
+        virtual bool Shutdown()                             = 0;
 
         virtual void Update() = 0;
 
@@ -43,4 +43,4 @@ namespace Framework::Graphics {
             _context = ctx;
         }
     };
-} // namespace Framework::GUI
+} // namespace Framework::Graphics

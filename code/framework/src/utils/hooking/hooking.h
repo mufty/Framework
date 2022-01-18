@@ -1,7 +1,7 @@
 /*
  * MafiaHub OSS license
  * Copyright (c) 2020, CitizenFX
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -184,6 +184,18 @@ namespace hook {
             put<uint16_t>((uintptr_t)address + 1, stackSize);
         }
     }
+
+#ifdef _M_IX86
+    template <typename TRet, typename TFnRet, typename... TArgs>
+    inline TRet bind(TFnRet (*func)(TArgs...)) {
+        return (TRet) reinterpret_cast<void *&>(func);
+    }
+
+    template <typename TRet, class TClass, typename TFnRet, typename... TArgs>
+    inline TRet bind(TFnRet (TClass::*func)(TArgs...)) {
+        return (TRet)(void *&)func;
+    }
+#endif
 
     template <typename T>
     inline T *getRVA(uintptr_t rva) {

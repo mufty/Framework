@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -18,11 +18,11 @@
 #endif
 
 namespace Framework::Graphics {
-    class D3D9Backend: public Backend<IDirect3D9 *, IDirect3D9 *> {
+    class D3D9Backend: public Backend<IDirect3DDevice9 *, void *> {
       public:
-        virtual bool Init(IDirect3D9 *, IDirect3D9*) override;
+        virtual bool Init(IDirect3DDevice9 *, void *) override;
         virtual bool Shutdown() override;
 
         virtual void Update() override;
     };
-} // namespace Framework::GUI
+} // namespace Framework::Graphics

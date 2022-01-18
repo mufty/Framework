@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "../shared/types/environment.hpp"
+#include "../shared/types/player.hpp"
 #include "errors.h"
 #include "external/firebase/wrapper.h"
 #include "masterlist.h"
@@ -45,7 +47,8 @@ namespace Framework::Integrations::Server {
         bool enableSignals;
 
         // update intervals
-        uint32_t tickInterval = 3334;
+        float tickInterval         = 0.016667f;
+        float streamerTickInterval = 0.033334f;
 
         // args
         int argc;
@@ -57,6 +60,8 @@ namespace Framework::Integrations::Server {
         std::string firebaseAppId;
         std::string firebaseApiKey;
     };
+
+    using OnPlayerConnectionCallback = std::function<void(flecs::entity)>;
 
     class Instance {
       private:
@@ -76,11 +81,19 @@ namespace Framework::Integrations::Server {
         void InitEndpoints();
         void InitModules();
         void InitManagers();
-        void InitMessages();
+        void InitNetworkingMessages();
         bool LoadConfigFromJSON();
 
         // managers
         flecs::entity _weatherManager;
+
+        // entity factories
+        std::unique_ptr<Shared::Archetypes::EnvironmentFactory> _envFactory;
+        std::unique_ptr<Shared::Archetypes::PlayerFactory> _playerFactory;
+
+        // callbacks
+        OnPlayerConnectionCallback _onPlayerConnectedCallback;
+        OnPlayerConnectionCallback _onPlayerDisconnectedCallback;
 
       public:
         Instance();
@@ -105,12 +118,24 @@ namespace Framework::Integrations::Server {
             return _alive;
         }
 
+        void SetOnPlayerConnectedCallback(OnPlayerConnectionCallback onPlayerConnectedCallback) {
+            _onPlayerConnectedCallback = onPlayerConnectedCallback;
+        }
+
+        void SetOnPlayerDisconnectedCallback(OnPlayerConnectionCallback onPlayerDisconnectedCallback) {
+            _onPlayerDisconnectedCallback = onPlayerDisconnectedCallback;
+        }
+
         InstanceOptions &GetOpts() {
             return _opts;
         }
 
         Scripting::Engine *GetScriptingEngine() const {
             return _scriptingEngine.get();
+        }
+
+        World::ServerEngine *GetWorldEngine() const {
+            return _worldEngine.get();
         }
 
         Networking::Engine *GetNetworkingEngine() const {

@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -8,13 +8,13 @@
 
 #pragma once
 
+#include "utils/config.h"
+
 #include <external/steam/wrapper.h>
 #include <functional>
 #include <string>
 #include <vector>
 #include <windows.h>
-
-#include "utils/config.h"
 
 namespace Framework::Launcher {
     enum class ProjectPlatform { CLASSIC, STEAM };
@@ -34,6 +34,9 @@ namespace Framework::Launcher {
         // allows us to load client ourselves, otherwise stick to Framework's standard loading routine
         bool loadClientManually = false;
 
+        // if promptForGameExe is true, and steam dll is found in the game's library, switch to steam platform
+        bool preferSteam = false;
+
         // game exe integrity checks (uses CRC32 checksum)
         bool verifyGameIntegrity = false;
         std::vector<uint32_t> supportedGameVersions;
@@ -41,10 +44,14 @@ namespace Framework::Launcher {
         // additional DLL search paths
         std::vector<std::wstring> additionalSearchPaths;
 
+        // alternative game working directory
+        bool useAlternativeWorkDir = false; // Uses the game's root directory by default
+        std::wstring alternativeWorkDir;
+
         // prompt for game exe (only if CLASSIC platform is set)
-        bool promptForGameExe = false;
-        std::string promptTitle = "Select your game's executable";
-        std::string promptFilter = "Game.exe";
+        bool promptForGameExe        = false;
+        std::string promptTitle      = "Select your game's executable";
+        std::string promptFilter     = "Game.exe";
         std::string promptFilterName = "Your Game.exe";
         std::string promptExtension  = "*.exe";
         std::function<std::wstring(std::wstring gameExePath)> promptSelectionFunctor;
@@ -52,7 +59,11 @@ namespace Framework::Launcher {
         // JSON config project settings
         bool disablePersistentConfig = false;
         bool overrideConfigFileName  = false; // Uses <config.name>_launcher.json by default
-        std::string configFileName = "launcher.json";
+        std::string configFileName   = "launcher.json";
+
+        // Console allocation
+        bool allocateDeveloperConsole      = false;
+        std::wstring developerConsoleTitle = L"framework: dev-console";
     };
 
     class Project {
@@ -89,9 +100,11 @@ namespace Framework::Launcher {
             _preLaunchFunctor = preLaunchFunctor;
         }
 
-        ProjectConfiguration& GetConfig() {
+        ProjectConfiguration &GetConfig() {
             return _config;
         }
+
+        static void InitialiseClientDLL();
 
       private:
         bool EnsureFilesExist(const std::vector<std::string> &);
@@ -105,6 +118,8 @@ namespace Framework::Launcher {
         void SaveJSONConfig();
 
         void InvokeEntryPoint(void (*entryPoint)());
+
+        void AllocateDeveloperConsole();
 
         bool Run();
     };

@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -14,6 +14,10 @@
 #include <string>
 #include <unordered_map>
 
+namespace Framework::Networking {
+    class NetworkPeer;
+};
+
 namespace Framework::World::Modules {
     struct Base {
         struct Transform {
@@ -24,30 +28,50 @@ namespace Framework::World::Modules {
 
         struct Frame {
             flecs::string modelName;
+            uint64_t modelHash;
             glm::vec3 scale = glm::vec3(1.0f, 1.0f, 1.0f);
         };
 
-        struct PendingRemoval {};
+        struct PendingRemoval {
+            uint8_t _unused;
+        };
+
+        struct ServerID {
+            flecs::entity_t id;
+        };
 
         struct Streamable {
+            using IsVisibleProc = std::function<bool(flecs::entity lhs, flecs::entity rhs)>;
+            enum class HeuristicMode { ADD, REPLACE, REPLACE_POSITION };
+
             int virtualWorld        = 0;
             bool isVisible          = true;
             bool alwaysVisible      = false;
-            int64_t updateFrequency = 1667;
+            double updateInterval = (1000.0/60.0); // 16.1667~ ms interval
             flecs::entity_t owner   = 0;
 
             struct Events {
-                using Proc = std::function<bool(uint64_t, flecs::entity &)>;
+                using Proc = std::function<bool(Framework::Networking::NetworkPeer *, uint64_t, flecs::entity)>;
                 Proc spawnProc;
                 Proc despawnProc;
                 Proc selfUpdateProc;
+                Proc clientUpdateProc; // client -> server
                 Proc updateProc;
-            } events;
+            };
+
+            Events events;
+
+            // Extra set of events so mod can supply custom data.
+            Events modEvents;
+
+            // Custom visibility proc that either complements the existing heuristic or replaces it
+            HeuristicMode isVisibleHeuristic = HeuristicMode::ADD;
+            IsVisibleProc isVisibleProc;
         };
 
         struct Streamer {
             struct StreamData {
-                int64_t lastUpdate = 0;
+                double lastUpdate = 0.0;
             };
             std::unordered_map<flecs::entity_t, StreamData> entities;
             float range = 100.0f;
@@ -63,6 +87,10 @@ namespace Framework::World::Modules {
             world.component<Streamable>();
             world.component<Streamer>();
             world.component<PendingRemoval>();
+            world.component<ServerID>();
         }
+
+        static void SetupDefaultEvents(Streamable *streamable);
+        static void SetupDefaultClientEvents(Streamable *streamable);
     };
 } // namespace Framework::World::Modules

@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -20,6 +20,7 @@
 namespace Framework::Networking {
     class NetworkServer: public NetworkPeer {
       private:
+        Messages::PacketCallback _onPlayerConnectCallback;
         Messages::DisconnectPacketCallback _onPlayerDisconnectCallback;
 
       public:
@@ -33,6 +34,10 @@ namespace Framework::Networking {
         bool HandlePacket(uint8_t packetID, SLNet::Packet *packet) override;
 
         int GetPing(SLNet::RakNetGUID guid);
+
+        void SetOnPlayerConnectCallback(Messages::PacketCallback callback) {
+            _onPlayerConnectCallback = callback;
+        }
 
         void SetOnPlayerDisconnectCallback(Messages::DisconnectPacketCallback callback) {
             _onPlayerDisconnectCallback = callback;

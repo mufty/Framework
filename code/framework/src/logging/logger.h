@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -21,6 +21,8 @@
 #define FRAMEWORK_INNER_INTEGRATIONS "Integrations"
 #define FRAMEWORK_INNER_JOBS         "Jobs"
 #define FRAMEWORK_INNER_LAUNCHER     "Launcher"
+#define FRAMEWORK_INNER_UTILS        "Utils"
+#define FRAMEWORK_INNER_GRAPHICS     "Graphics"
 
 #define FRAMEWORK_INNER_SERVER "Server"
 #define FRAMEWORK_INNER_CLIENT "Client"
@@ -30,10 +32,11 @@ namespace Framework::Logging {
       private:
         std::chrono::time_point<std::chrono::system_clock> _sessionStart;
         std::unordered_map<const char *, std::shared_ptr<spdlog::logger>> _loggers;
-        std::string _logName = "framework";
-        size_t _maxFileSize  = 1024 * 1024 * 10;
-        size_t _maxFileCount = 10;
-        bool _loggingPaused  = false;
+        std::string _logName   = "framework";
+        std::string _logFolder = "logs";
+        size_t _maxFileSize    = 1024 * 1024 * 10;
+        size_t _maxFileCount   = 10;
+        bool _loggingPaused    = false;
 
       public:
         Logger();
@@ -47,6 +50,14 @@ namespace Framework::Logging {
 
         const std::string &GetLogName() const {
             return _logName;
+        }
+
+        void SetLogFolder(const std::string &folder) {
+            _logFolder = folder;
+        }
+
+        const std::string &GetLogFolder() const {
+            return _logFolder;
         }
 
         void SetMaxFileSize(size_t size) {

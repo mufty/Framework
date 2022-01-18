@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -14,6 +14,7 @@
 #include <cppfs/FileIterator.h>
 #include <cppfs/fs.h>
 #include <logging/logger.h>
+#include <regex>
 
 namespace Framework::Scripting {
     ResourceManager::ResourceManager(Engine *engine): _engine(engine) {}
@@ -25,12 +26,17 @@ namespace Framework::Scripting {
     }
 
     ResourceManagerError ResourceManager::Load(std::string name, SDKRegisterCallback cb) {
-        // TODO: check for package name correctness before trying to load the resource
+        // Make sure the package has an acceptable name
+        std::regex exp("^[A-z_0-9]{0,}$");
+        if (!std::regex_match(name, exp)) {
+            Logging::GetLogger(FRAMEWORK_INNER_SCRIPTING)->error("Failed to load package {} due to invalid name", name);
+            return ResourceManagerError::RESOURCE_NAME_INVALID;
+        }
 
         // Is the package already present?
         if (_resources.find(name) != _resources.end()) {
             Logging::GetLogger(FRAMEWORK_INNER_SCRIPTING)->debug("Package {} already loaded", name);
-            return Framework::Scripting::ResourceManagerError::RESOURCE_ALREADY_LOADED;
+            return ResourceManagerError::RESOURCE_ALREADY_LOADED;
         }
 
         std::string fullPath("resources/" + name);
@@ -39,18 +45,18 @@ namespace Framework::Scripting {
         // If loading failed, just free everything and return
         if (!res->IsLoaded()) {
             delete res;
-            return Framework::Scripting::ResourceManagerError::RESOURCE_LOADING_FAILED;
+            return ResourceManagerError::RESOURCE_LOADING_FAILED;
         }
 
         _resources[name] = res;
-        return Framework::Scripting::ResourceManagerError::RESOURCE_MANAGER_NONE;
+        return ResourceManagerError::RESOURCE_MANAGER_NONE;
     }
 
     ResourceManagerError ResourceManager::Unload(std::string name) {
         // Is the package event present?
         if (_resources.find(name) == _resources.end()) {
             Logging::GetLogger(FRAMEWORK_INNER_SCRIPTING)->debug("Package {} not loaded", name);
-            return Framework::Scripting::ResourceManagerError::RESOURCE_NOT_LOADED;
+            return ResourceManagerError::RESOURCE_NOT_LOADED;
         }
 
         // Acquire the instance and call the unloader
@@ -62,7 +68,7 @@ namespace Framework::Scripting {
         // Free em
         delete res;
         _resources.erase(name);
-        return Framework::Scripting::ResourceManagerError::RESOURCE_MANAGER_NONE;
+        return ResourceManagerError::RESOURCE_MANAGER_NONE;
     }
 
     void ResourceManager::LoadAll(SDKRegisterCallback cb) {

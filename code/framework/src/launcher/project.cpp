@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -9,9 +9,9 @@
 #include "project.h"
 
 #include "loaders/exe_ldr.h"
+#include "logging/logger.h"
 #include "utils/hashing.h"
 #include "utils/string_utils.h"
-#include "logging/logger.h"
 
 #include <ShellScalingApi.h>
 #include <Windows.h>
@@ -23,8 +23,8 @@
 #include <functional>
 #include <ostream>
 #include <psapi.h>
-#include <utils/hooking/hooking.h>
 #include <sfd.h>
+#include <utils/hooking/hooking.h>
 
 // Enforce discrete GPU on mobile units.
 extern "C" {
@@ -38,7 +38,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 char fwgame_seg[0x13000000];
 #else
 #pragma bss_seg(".fwgame")
-char fwgame_seg[0x1400000];
+char fwgame_seg[0x2500000];
 #endif
 
 static const wchar_t *gImagePath;
@@ -47,26 +47,29 @@ HMODULE tlsDll {};
 
 static wchar_t gProjectDllPath[32768];
 
+// Default entry point for the client DLL
+typedef void (*ClientEntryPoint)(const wchar_t *projectPath);
+
 static LONG NTAPI HandleVariant(PEXCEPTION_POINTERS exceptionInfo) {
     return (exceptionInfo->ExceptionRecord->ExceptionCode == STATUS_INVALID_HANDLE) ? EXCEPTION_CONTINUE_EXECUTION : EXCEPTION_CONTINUE_SEARCH;
 }
 
 void WINAPI GetStartupInfoW_Stub(LPSTARTUPINFOW lpStartupInfo) {
-    static bool init = false;
-
-    if (!init) {
-        auto mod = LoadLibraryW(gDllName);
-
-        if (mod) {
-            auto init = reinterpret_cast<void *(*)()>(GetProcAddress(mod, "InitClient"));
-            if (init) {
-                init();
-            }
-        }
-        init = true;
-    }
+    Framework::Launcher::Project::InitialiseClientDLL();
 
     return GetStartupInfoW(lpStartupInfo);
+}
+
+void WINAPI GetStartupInfoA_Stub(LPSTARTUPINFOA lpStartupInfo) {
+    Framework::Launcher::Project::InitialiseClientDLL();
+
+    return GetStartupInfoA(lpStartupInfo);
+}
+
+LPSTR WINAPI GetCommandLineA_Stub() {
+    Framework::Launcher::Project::InitialiseClientDLL();
+
+    return GetCommandLineA();
 }
 
 DWORD WINAPI GetModuleFileNameA_Hook(HMODULE hModule, LPSTR lpFilename, DWORD nSize) {
@@ -113,13 +116,23 @@ DWORD WINAPI GetModuleFileNameExW_Hook(HANDLE hProcess, HMODULE hModule, LPWSTR 
 
 namespace Framework::Launcher {
     Project::Project(ProjectConfiguration &cfg): _config(cfg) {
+        // Fetch the current working directory
+        GetCurrentDirectoryW(32768, gProjectDllPath);
+
+        Logging::GetInstance()->SetLogName(_config.name);
+
+        auto projectPath = Utils::StringUtils::WideToNormal(gProjectDllPath);
+        std::replace(projectPath.begin(), projectPath.end(), '\\', '/');
+        Logging::GetInstance()->SetLogFolder(projectPath + "/logs");
+
         _steamWrapper = new External::Steam::Wrapper;
         _fileConfig   = std::make_unique<Utils::Config>();
     }
 
     bool Project::Launch() {
-        // Fetch the current working directory
-        GetCurrentDirectoryW(32768, gProjectDllPath);
+        if (_config.allocateDeveloperConsole) {
+            AllocateDeveloperConsole();
+        }
 
         if (!_config.disablePersistentConfig) {
             if (!LoadJSONConfig()) {
@@ -141,7 +154,7 @@ namespace Framework::Launcher {
         }
 
         // Load the destination DLL
-        if (!LoadLibraryW(_config.destinationDllName.c_str())) {
+        if (!_config.loadClientManually && !LoadLibraryW(_config.destinationDllName.c_str())) {
             MessageBox(nullptr, "Failed to load core runtime", _config.name.c_str(), MB_ICONERROR);
             return 0;
         }
@@ -165,6 +178,11 @@ namespace Framework::Launcher {
             // add our own paths now
             addDllDirectory(gProjectDllPath);
             addDllDirectory((std::wstring(gProjectDllPath) + L"\\bin").c_str());
+
+            if (_config.useAlternativeWorkDir) {
+                _gamePath += L"/" + _config.alternativeWorkDir;
+                addDllDirectory(_gamePath.c_str());
+            }
 
             SetCurrentDirectoryW(_gamePath.c_str());
         }
@@ -263,10 +281,7 @@ namespace Framework::Launcher {
 
         // If we don't have the app id file, create it
         cppfs::FileHandle appIdFile = cppfs::fs::open("steam_appid.txt");
-        if (!appIdFile.exists()) {
-            auto outStream = appIdFile.createOutputStream();
-            (*outStream) << std::to_string(_config.steamAppId) << std::endl;
-        }
+        appIdFile.writeFile(std::to_string(_config.steamAppId) + "\n");
 
         // Initialize the steam wrapper
         const auto initResult = _steamWrapper->Init();
@@ -301,11 +316,11 @@ namespace Framework::Launcher {
             MessageBoxA(nullptr, "Please specify game path", _config.name.c_str(), MB_ICONERROR);
             return 0;
         }
-        
+
         if (!handle.isDirectory()) {
             const auto exePath = Utils::StringUtils::WideToNormal(gProjectDllPath);
 
-            sfd_Options sfd;
+            sfd_Options sfd = {};
             sfd.path        = exePath.c_str();
             sfd.extension   = _config.promptExtension.c_str();
             sfd.filter_name = _config.promptFilterName.c_str();
@@ -320,18 +335,30 @@ namespace Framework::Launcher {
                 handle = cppfs::fs::open(path);
 
                 if (!handle.isFile()) {
-                    MessageBoxA(nullptr, ("Cannot find a game executable by given path:\n" + std::string(path) + "\n\n Please check your path and try again!").c_str(), _config.name.c_str(), MB_ICONERROR);
+                    MessageBoxA(nullptr, ("Cannot find a game executable by given path:\n" + std::string(path) + "\n\n Please check your path and try again!").c_str(),
+                        _config.name.c_str(), MB_ICONERROR);
                     return 0;
                 }
 
                 _config.classicGamePath = Utils::StringUtils::NormalToWide(path);
-                
+
                 std::replace(_config.classicGamePath.begin(), _config.classicGamePath.end(), '\\', '/');
 
                 _config.classicGamePath = _config.classicGamePath.substr(0, _config.classicGamePath.length() - _config.executableName.length());
-                
+
                 if (_config.promptSelectionFunctor)
                     _config.classicGamePath = _config.promptSelectionFunctor(_config.classicGamePath);
+
+                if (_config.preferSteam) {
+                    auto steamDllName = _config.arch == ProjectArchitecture::CPU_X64 ? "/steam_api64.dll" : "/steam_api.dll";
+                    auto steamDll     = cppfs::fs::open(Utils::StringUtils::WideToNormal(_config.classicGamePath) + steamDllName);
+
+                    if (steamDll.exists()) {
+                        Logging::GetLogger(FRAMEWORK_INNER_LAUNCHER)->info("Steam dll found in the game directory, switching to steam platform");
+                        _config.platform = ProjectPlatform::STEAM;
+                        return RunInnerSteamChecks();
+                    }
+                }
             }
             else {
                 ExitProcess(0);
@@ -356,7 +383,7 @@ namespace Framework::Launcher {
         }
 
         gImagePath = _gamePath.c_str();
-        gDllName = _config.destinationDllName.c_str();
+        gDllName   = _config.destinationDllName.c_str();
 
         // determine file length
         DWORD dwFileLength = SetFilePointer(hFile, 0, NULL, FILE_END);
@@ -381,7 +408,7 @@ namespace Framework::Launcher {
             return false;
         }
 
-        printf("[Project] Loaded Game (%ld MB)\n", dwFileLength / 1024 / 1024);
+        printf("[Project] Loaded Game (%.02f MB)\n", dwFileLength / 1024.f / 1024.f);
 
         auto base = GetModuleHandle(nullptr);
 
@@ -408,19 +435,28 @@ namespace Framework::Launcher {
                     return ret;
                 }
             }
-            if (!_config.loadClientManually && !_strcmpi(exportFn, "GetStartupInfoW")) {
+
+            const auto exportName = std::string(exportFn);
+
+            if (!_config.loadClientManually && exportName == "GetStartupInfoW") {
                 return static_cast<LPVOID>(GetStartupInfoW_Stub);
             }
-            if (!_strcmpi(exportFn, "GetModuleFileNameA")) {
+            if (!_config.loadClientManually && exportName == "GetStartupInfoA") {
+                return static_cast<LPVOID>(GetStartupInfoA_Stub);
+            }
+            if (!_config.loadClientManually && exportName == "GetCommandLineA") {
+                return static_cast<LPVOID>(GetCommandLineA_Stub);
+            }
+            if (exportName == "GetModuleFileNameA") {
                 return static_cast<LPVOID>(GetModuleFileNameA_Hook);
             }
-            if (!_strcmpi(exportFn, "GetModuleFileNameExA")) {
+            if (exportName == "GetModuleFileNameExA") {
                 return static_cast<LPVOID>(GetModuleFileNameExA_Hook);
             }
-            if (!_strcmpi(exportFn, "GetModuleFileNameW")) {
+            if (exportName == "GetModuleFileNameW") {
                 return static_cast<LPVOID>(GetModuleFileNameW_Hook);
             }
-            if (!_strcmpi(exportFn, "GetModuleFileNameExW")) {
+            if (exportName == "GetModuleFileNameExW") {
                 return static_cast<LPVOID>(GetModuleFileNameExW_Hook);
             }
             return static_cast<LPVOID>(GetProcAddress(hmod, exportFn));
@@ -460,6 +496,16 @@ namespace Framework::Launcher {
         }
     }
 
+    void Project::AllocateDeveloperConsole() {
+        AllocConsole();
+        AttachConsole(GetCurrentProcessId());
+        SetConsoleTitleW(_config.developerConsoleTitle.c_str());
+
+        (void)freopen("CON", "w", stdout);
+        (void)freopen("CONIN$", "r", stdin);
+        (void)freopen("CONIN$", "r", stderr);
+    }
+
     bool Project::EnsureFilesExist(const std::vector<std::string> &files) {
         for (const auto &file : files) {
             cppfs::FileHandle fh = cppfs::fs::open(file);
@@ -483,12 +529,12 @@ namespace Framework::Launcher {
 
     bool Project::LoadJSONConfig() {
         if (!_config.overrideConfigFileName) {
-            _config.configFileName = fmt::format("{}_launcher.json", _config.name);     
+            _config.configFileName = fmt::format("{}_launcher.json", _config.name);
         }
         auto configHandle = cppfs::fs::open(_config.configFileName);
 
         if (!configHandle.exists()) {
-            Logging::GetLogger(FRAMEWORK_INNER_LAUNCHER)->info("JSON config file is not present, skipping load...");
+            Logging::GetLogger(FRAMEWORK_INNER_LAUNCHER)->info("JSON config file is not present, generating new instance...");
             _fileConfig->Parse("{}");
             return true;
         }
@@ -505,9 +551,10 @@ namespace Framework::Launcher {
             }
 
             // Retrieve fields and overwrite ProjectConfiguration defaults
-            _config.classicGamePath = _fileConfig->GetDefault<std::wstring>("gamePath", _config.classicGamePath);
-            _config.steamAppId      = _fileConfig->GetDefault<AppId_t>("steamAppId", _config.steamAppId);
-            _config.executableName  = _fileConfig->GetDefault<std::wstring>("exeName", _config.executableName);
+            Logging::GetLogger(FRAMEWORK_INNER_LAUNCHER)->info("Loading launcher settings from JSON config file...");
+            _config.classicGamePath    = _fileConfig->GetDefault<std::wstring>("gamePath", _config.classicGamePath);
+            _config.steamAppId         = _fileConfig->GetDefault<AppId_t>("steamAppId", _config.steamAppId);
+            _config.executableName     = _fileConfig->GetDefault<std::wstring>("exeName", _config.executableName);
             _config.destinationDllName = _fileConfig->GetDefault<std::wstring>("dllName", _config.destinationDllName);
 
             std::replace(_config.classicGamePath.begin(), _config.classicGamePath.end(), '\\', '/');
@@ -554,5 +601,25 @@ namespace Framework::Launcher {
         }
 
         return false;
+    }
+
+    void Project::InitialiseClientDLL() {
+        static bool init = false;
+
+        if (!init) {
+            auto mod = LoadLibraryW(gDllName);
+
+            if (mod) {
+                auto init = reinterpret_cast<ClientEntryPoint>(GetProcAddress(mod, "InitClient"));
+                if (init) {
+                    init(gProjectDllPath);
+                }
+                else {
+                    MessageBoxA(nullptr, "Failed to find InitClient function in client DLL", "Error", MB_ICONERROR);
+                    ExitProcess(1);
+                }
+            }
+            init = true;
+        }
     }
 } // namespace Framework::Launcher

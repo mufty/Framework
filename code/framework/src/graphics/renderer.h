@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -13,6 +13,8 @@
 #include "errors.h"
 #include "types.h"
 
+#include <Windows.h>
+
 namespace Framework::Graphics {
     struct RendererConfiguration {
         RendererBackend backend;
@@ -23,6 +25,8 @@ namespace Framework::Graphics {
         RendererConfiguration _config;
         RendererState _state;
         RendererBackend _backend;
+
+        HWND _window;
 
         D3D9Backend *_d3d9Backend;
         D3D11Backend *_d3d11Backend;
@@ -48,6 +52,14 @@ namespace Framework::Graphics {
 
         D3D11Backend *GetD3D11Backend() const {
             return _d3d11Backend;
+        }
+
+        HWND GetWindow() const {
+            return _window;
+        }
+
+        void SetWindow(HWND ptr) {
+            _window = ptr;
         }
 
         bool IsInitialized() const {

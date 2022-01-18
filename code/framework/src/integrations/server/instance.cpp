@@ -1,6 +1,6 @@
 /*
  * MafiaHub OSS license
- * Copyright (c) 2021, MafiaHub. All rights reserved.
+ * Copyright (c) 2022, MafiaHub. All rights reserved.
  *
  * This file comes from MafiaHub, hosted at https://github.com/MafiaHub/Framework.
  * See LICENSE file in the source repository for information regarding licensing.
@@ -10,8 +10,17 @@
 
 #include "../shared/modules/mod.hpp"
 #include "../shared/types/environment.hpp"
+#include "../shared/types/player.hpp"
 #include "integrations/shared/messages/weather_update.h"
 #include "world/server.h"
+
+#include <networking/messages/client_connection_finalized.h>
+#include <networking/messages/client_handshake.h>
+#include <networking/messages/game_sync/entity_client_update.h>
+#include <networking/messages/client_kick.h>
+#include <networking/messages/messages.h>
+
+#include "utils/version.h"
 
 #include <cxxopts.hpp>
 #include <nlohmann/json.hpp>
@@ -79,7 +88,7 @@ namespace Framework::Integrations::Server {
         }
 
         // Initialize the world
-        if (_worldEngine->Init() != World::EngineError::ENGINE_NONE) {
+        if (_worldEngine->Init(_networkingEngine->GetNetworkServer(), _opts.streamerTickInterval) != World::EngineError::ENGINE_NONE) {
             Logging::GetLogger(FRAMEWORK_INNER_SERVER)->critical("Failed to initialize the world engine");
             return ServerError::SERVER_WORLD_INIT_FAILED;
         }
@@ -100,7 +109,7 @@ namespace Framework::Integrations::Server {
         InitManagers();
 
         // Initialize default messages
-        InitMessages();
+        InitNetworkingMessages();
 
         // Initialize mod subsystems
         PostInit();
@@ -144,8 +153,10 @@ namespace Framework::Integrations::Server {
 
     void Instance::InitManagers() {
         // weather
-        auto envFactory = Integrations::Shared::Archetypes::EnvironmentFactory(_worldEngine->GetWorld(), _networkingEngine->GetNetworkServer());
-        _weatherManager = envFactory.CreateWeather("WeatherManager");
+        _envFactory.reset(new Integrations::Shared::Archetypes::EnvironmentFactory(_worldEngine->GetWorld()));
+        _weatherManager = _envFactory->CreateWeather("WeatherManager");
+
+        _playerFactory.reset(new Integrations::Shared::Archetypes::PlayerFactory);
     }
 
     bool Instance::LoadConfigFromJSON() {
@@ -182,18 +193,78 @@ namespace Framework::Integrations::Server {
         return true;
     }
 
-    void Instance::InitMessages() {
-        _networkingEngine->GetNetworkServer()->SetOnPlayerDisconnectCallback([this](SLNet::Packet *packet, uint32_t reason) {
-            const auto guid = packet->guid;
-            Logging::GetLogger(FRAMEWORK_INNER_NETWORKING)->debug("Disconnecting peer {}, reason: {}", guid.g, reason);
+    void Instance::InitNetworkingMessages() {
+        using namespace Framework::Networking::Messages;
+        const auto net = _networkingEngine->GetNetworkServer();
+        net->RegisterMessage<ClientHandshake>(
+            Framework::Networking::Messages::GameMessages::GAME_CONNECTION_HANDSHAKE, [this, net](SLNet::RakNetGUID guid, ClientHandshake *msg) {
+                Logging::GetLogger(FRAMEWORK_INNER_SERVER)->debug("Received handshake message for player {}", msg->GetPlayerName());
 
-            // TODO send disconnect message
-            _networkingEngine->GetNetworkServer()->GetPeer()->CloseConnection(guid, true);
+                // Make sure handshake payload was correctly formatted
+                if (!msg->Valid()) {
+                    Logging::GetLogger(FRAMEWORK_INNER_SERVER)->error("Handshake payload was invalid, force-disconnecting peer");
+                    net->GetPeer()->CloseConnection(guid, true);
+                    return;
+                }
+
+                const auto clientVersion = msg->GetClientVersion();
+
+                if (!Utils::Version::VersionSatisfies(clientVersion.c_str(), Utils::Version::rel)) {
+                    Logging::GetLogger(FRAMEWORK_INNER_SERVER)->error("Client has invalid version, force-disconnecting peer");
+                    Framework::Networking::Messages::ClientKick kick;
+                    kick.FromParameters(Framework::Networking::Messages::DisconnectionReason::WRONG_VERSION);
+                    net->Send(kick, guid);
+                    net->GetPeer()->CloseConnection(guid, true);
+                    return;
+                }
+
+                // Create player entity and add on world
+                const auto newPlayer = _worldEngine->CreateEntity();
+                auto newPlayerEntity = _playerFactory->SetupServer(newPlayer, guid.g);
+
+                if (_onPlayerConnectedCallback)
+                    _onPlayerConnectedCallback(newPlayerEntity);
+
+                // Send the connection finalized packet
+                Framework::Networking::Messages::ClientConnectionFinalized answer;
+                answer.FromParameters(_opts.tickInterval, newPlayerEntity.id());
+                net->Send(answer, guid);
+        });
+
+        net->SetOnPlayerDisconnectCallback([this, net](SLNet::Packet *packet, uint32_t reason) {
+            const auto guid = packet->guid;
+            Logging::GetLogger(FRAMEWORK_INNER_SERVER)->debug("Disconnecting peer {}, reason: {}", guid.g, reason);
 
             auto e = _worldEngine->GetEntityByGUID(guid.g);
+            
             if (e.is_valid()) {
-                e.add<World::Modules::Base::PendingRemoval>();
+                if (_onPlayerDisconnectedCallback)
+                    _onPlayerDisconnectedCallback(e);
+
+                _worldEngine->RemoveEntity(e);
             }
+
+            net->GetPeer()->CloseConnection(guid, true);
+        });
+
+        // default entity events
+        net->RegisterMessage<GameSyncEntityClientUpdate>(GameMessages::GAME_SYNC_ENTITY_CLIENT_UPDATE, [this](SLNet::RakNetGUID guid, GameSyncEntityClientUpdate *msg) {
+            if (!msg->Valid()) {
+                return;
+            }
+
+            const auto e = _worldEngine->WrapEntity(msg->GetServerID());
+
+            if (!e.is_alive()) {
+                return;
+            }
+            
+            if (!GetWorldEngine()->IsEntityOwner(e, guid.g)) {
+                return;
+            }
+
+            auto tr = e.get_mut<World::Modules::Base::Transform>();
+            *tr     = msg->GetTransform();
         });
     }
 
@@ -243,10 +314,11 @@ namespace Framework::Integrations::Server {
 
             PostUpdate();
 
-            _nextTick = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(_opts.tickInterval);
+            _nextTick = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(static_cast<int64_t>(_opts.tickInterval * 1000.0f));
         }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(0));
+        }
     }
     void Instance::Run() {
         while (_alive) {
