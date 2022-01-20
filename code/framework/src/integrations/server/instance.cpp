@@ -28,6 +28,7 @@
 
 namespace Framework::Integrations::Server {
     Instance::Instance(): _alive(false) {
+        OPTICK_START_CAPTURE();
         _scriptingEngine  = std::make_unique<Scripting::Engine>();
         _networkingEngine = std::make_unique<Networking::Engine>();
         _webServer        = std::make_unique<HTTP::Webserver>();
@@ -39,6 +40,7 @@ namespace Framework::Integrations::Server {
 
     Instance::~Instance() {
         sig_detach(this);
+        OPTICK_STOP_CAPTURE();
     }
 
     ServerError Instance::Init(InstanceOptions &opts) {
@@ -152,11 +154,8 @@ namespace Framework::Integrations::Server {
     }
 
     void Instance::InitManagers() {
-        // weather
-        _envFactory.reset(new Integrations::Shared::Archetypes::EnvironmentFactory(_worldEngine->GetWorld()));
-        _weatherManager = _envFactory->CreateWeather("WeatherManager");
-
         _playerFactory.reset(new Integrations::Shared::Archetypes::PlayerFactory);
+        _streamingFactory.reset(new Integrations::Shared::Archetypes::StreamingFactory);
     }
 
     bool Instance::LoadConfigFromJSON() {
@@ -220,14 +219,15 @@ namespace Framework::Integrations::Server {
 
                 // Create player entity and add on world
                 const auto newPlayer = _worldEngine->CreateEntity();
-                auto newPlayerEntity = _playerFactory->SetupServer(newPlayer, guid.g);
+                _streamingFactory->SetupServer(newPlayer, guid.g);
+                _playerFactory->SetupServer(newPlayer, guid.g);
 
                 if (_onPlayerConnectedCallback)
-                    _onPlayerConnectedCallback(newPlayerEntity);
+                    _onPlayerConnectedCallback(newPlayer, guid.g);
 
                 // Send the connection finalized packet
                 Framework::Networking::Messages::ClientConnectionFinalized answer;
-                answer.FromParameters(_opts.tickInterval, newPlayerEntity.id());
+                answer.FromParameters(_opts.tickInterval, newPlayer.id());
                 net->Send(answer, guid);
         });
 
@@ -236,10 +236,10 @@ namespace Framework::Integrations::Server {
             Logging::GetLogger(FRAMEWORK_INNER_SERVER)->debug("Disconnecting peer {}, reason: {}", guid.g, reason);
 
             auto e = _worldEngine->GetEntityByGUID(guid.g);
-            
+
             if (e.is_valid()) {
                 if (_onPlayerDisconnectedCallback)
-                    _onPlayerDisconnectedCallback(e);
+                    _onPlayerDisconnectedCallback(e, guid.g);
 
                 _worldEngine->RemoveEntity(e);
             }
@@ -296,6 +296,7 @@ namespace Framework::Integrations::Server {
     void Instance::Update() {
         const auto start = std::chrono::high_resolution_clock::now();
         if (_nextTick <= start) {
+            OPTICK_EVENT();
             if (_networkingEngine) {
                 _networkingEngine->Update();
             }
@@ -322,7 +323,6 @@ namespace Framework::Integrations::Server {
     }
     void Instance::Run() {
         while (_alive) {
-            OPTICK_FRAME("MainThread");
             Update();
         }
     }

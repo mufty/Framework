@@ -42,7 +42,7 @@ namespace Framework::Logging {
 
         auto consoleLogger = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         consoleLogger->set_level(spdlog::level::debug);
-        consoleLogger->set_pattern("[%H:%M:%S] [%n] [%^%l%$] %v");
+        consoleLogger->set_pattern("[%H:%M:%S] [%^%l%$] [%n] %v");
 
         const auto fileLogName = _logFolder + "/" + _logName + ".log";
         auto fileLogger        = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(fileLogName, _maxFileSize, _maxFileCount);
@@ -51,13 +51,14 @@ namespace Framework::Logging {
         std::vector<spdlog::sink_ptr> sinks {consoleLogger, fileLogger};
         auto spdLogger = std::make_shared<spdlog::async_logger>(logName, sinks.begin(), sinks.end(), spdlog::thread_pool(), spdlog::async_overflow_policy::block);
         spdLogger->set_level(spdlog::level::trace);
-        spdlog::register_logger(spdLogger);
-
+        
         try {
-            _loggers.emplace(logName, spdLogger);
+            spdlog::register_logger(spdLogger);
         }
         catch (std::exception &ex) {
         }
+
+        _loggers.emplace(logName, spdLogger);
 
         return spdLogger;
     }

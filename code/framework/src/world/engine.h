@@ -20,6 +20,7 @@ namespace Framework::World {
     class Engine {
       protected:
         flecs::query<Modules::Base::Streamer> _findAllStreamerEntities;
+        flecs::query<Modules::Base::Transform, Modules::Base::Streamable> _allStreamableEntities;
         std::unique_ptr<flecs::world> _world;
         Networking::NetworkPeer *_networkPeer = nullptr;
 
@@ -30,7 +31,8 @@ namespace Framework::World {
 
         virtual void Update();
 
-        flecs::entity GetEntityByGUID(uint64_t guid);
+        flecs::entity GetEntityByGUID(uint64_t guid) const;
+        flecs::entity WrapEntity(flecs::entity_t serverID) const;
 
         flecs::world *GetWorld() {
             return _world.get();

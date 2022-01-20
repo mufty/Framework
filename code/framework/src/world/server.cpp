@@ -10,6 +10,8 @@
 
 #include "utils/time.h"
 
+#include <optick.h>
+
 namespace Framework::World {
     EngineError ServerEngine::Init(Framework::Networking::NetworkPeer *networkPeer, float tickInterval) {
         const auto status = Engine::Init(networkPeer);
@@ -18,10 +20,8 @@ namespace Framework::World {
             return status;
         }
 
-        auto allStreamableEntities = _world->query_builder<Modules::Base::Transform, Modules::Base::Streamable>().build();
-
-        auto isVisible = [](flecs::entity streamerEntity, flecs::entity e, Modules::Base::Transform &lhsTr, Modules::Base::Streamer &streamer, Modules::Base::Streamable &lhsS,
-                             Modules::Base::Transform &rhsTr, Modules::Base::Streamable rhsS) -> bool {
+        _isEntityVisible = [](const flecs::entity streamerEntity, const flecs::entity e, const Modules::Base::Transform &lhsTr, const Modules::Base::Streamer &streamer, const Modules::Base::Streamable &lhsS,
+                             const Modules::Base::Transform &rhsTr, const Modules::Base::Streamable rhsS) -> bool {
             if (!e.is_valid())
                 return false;
             if (!e.is_alive())
@@ -61,8 +61,8 @@ namespace Framework::World {
                 _findAllStreamerEntities.each([this, &e, &streamable](flecs::entity rhsE, Modules::Base::Streamer &rhsS) {
                     if (rhsS.entities.find(e) != rhsS.entities.end()) {
                         rhsS.entities.erase(e);
-                        if (streamable.events.despawnProc)
-                            streamable.events.despawnProc(_networkPeer, rhsS.guid, e);
+                        if (streamable.GetBaseEvents().despawnProc)
+                            streamable.GetBaseEvents().despawnProc(_networkPeer, rhsS.guid, e);
                     }
                 });
 
@@ -72,42 +72,43 @@ namespace Framework::World {
         _world->system<Modules::Base::Transform, Modules::Base::Streamer, Modules::Base::Streamable>("StreamEntities")
             .kind(flecs::PostUpdate)
             .interval(tickInterval)
-            .iter([allStreamableEntities, isVisible, this](flecs::iter it, Modules::Base::Transform *tr, Modules::Base::Streamer *s, Modules::Base::Streamable *rs) {
+            .iter([this](flecs::iter it, Modules::Base::Transform *tr, Modules::Base::Streamer *s, Modules::Base::Streamable *rs) {
                 for (size_t i = 0; i < it.count(); i++) {
+                    OPTICK_EVENT();
                     if (it.entity(i).get<Modules::Base::PendingRemoval>() != nullptr)
                         continue;
-                    allStreamableEntities.each([&](flecs::entity e, Modules::Base::Transform &otherTr, Modules::Base::Streamable &otherS) {
+                    _allStreamableEntities.each([&](flecs::entity e, Modules::Base::Transform &otherTr, Modules::Base::Streamable &otherS) {
                         if (!e.is_alive())
                             return;
-                        if (e == it.entity(i) && rs[i].events.selfUpdateProc) {
-                            rs[i].events.selfUpdateProc(_networkPeer, s[i].guid, e);
+                        if (e == it.entity(i) && rs[i].GetBaseEvents().selfUpdateProc) {
+                            rs[i].GetBaseEvents().selfUpdateProc(_networkPeer, s[i].guid, e);
                             return;
                         }
                         const auto id      = e.id();
-                        const auto canSend = isVisible(it.entity(i), e, tr[i], s[i], rs[i], otherTr, otherS);
+                        const auto canSend = _isEntityVisible(it.entity(i), e, tr[i], s[i], rs[i], otherTr, otherS);
                         const auto map_it  = s[i].entities.find(id);
                         if (map_it != s[i].entities.end()) {
                             // If we can't stream an entity anymore, despawn it
                             if (!canSend) {
                                 s[i].entities.erase(map_it);
-                                if (otherS.events.despawnProc)
-                                    otherS.events.despawnProc(_networkPeer, s[i].guid, e);
+                                if (otherS.GetBaseEvents().despawnProc)
+                                    otherS.GetBaseEvents().despawnProc(_networkPeer, s[i].guid, e);
                             }
 
                             // otherwise we do regular updates
                             else if (rs[i].owner != otherS.owner) {
                                 auto &data = map_it->second;
                                 if (static_cast<double>(Utils::Time::GetTime()) - data.lastUpdate > otherS.updateInterval) {
-                                    if (otherS.events.updateProc)
-                                        otherS.events.updateProc(_networkPeer, s[i].guid, e);
+                                    if (otherS.GetBaseEvents().updateProc)
+                                        otherS.GetBaseEvents().updateProc(_networkPeer, s[i].guid, e);
                                     data.lastUpdate = static_cast<double>(Utils::Time::GetTime());
                                 }
                             }
                         }
 
                         // this is a new entity, spawn it unless user says otherwise
-                        else if (canSend && otherS.events.spawnProc) {
-                            if (otherS.events.spawnProc(_networkPeer, s[i].guid, e)) {
+                        else if (canSend && otherS.GetBaseEvents().spawnProc) {
+                            if (otherS.GetBaseEvents().spawnProc(_networkPeer, s[i].guid, e)) {
                                 Modules::Base::Streamer::StreamData data;
                                 data.lastUpdate   = static_cast<double>(Utils::Time::GetTime());
                                 s[i].entities[id] = data;
@@ -125,6 +126,7 @@ namespace Framework::World {
     }
 
     void ServerEngine::Update() {
+        OPTICK_EVENT();
         Engine::Update();
     }
 
@@ -137,17 +139,48 @@ namespace Framework::World {
         }
     }
 
-    flecs::entity ServerEngine::WrapEntity(flecs::entity_t serverID) {
-        return flecs::entity(_world->get_world(), serverID);
-    }
-
-    bool ServerEngine::IsEntityOwner(flecs::entity e, uint64_t guid) {
+    bool ServerEngine::IsEntityOwner(flecs::entity e, uint64_t guid) const {
         const auto es = e.get<Framework::World::Modules::Base::Streamable>();
         if (!es) {
             return false;
         }
         return (es->owner == guid);
     }
+
+    void ServerEngine::SetOwner(flecs::entity e, uint64_t guid) {
+        auto es = e.get_mut<Framework::World::Modules::Base::Streamable>();
+        if (!es) {
+            return;
+        }
+        es->owner = guid;
+    }
+
+    flecs::entity ServerEngine::GetOwner(flecs::entity e) const {
+        const auto es = e.get<Framework::World::Modules::Base::Streamable>();
+        if (!es) {
+            return flecs::entity::null();
+        }
+        return GetEntityByGUID(es->owner);
+    }
+
+    std::vector<flecs::entity> ServerEngine::FindVisibleStreamers(flecs::entity e) const {
+        std::vector<flecs::entity> streamers;
+        const auto es = e.get<Framework::World::Modules::Base::Streamable>();
+        if (!es) {
+            return {};
+        }
+        _findAllStreamerEntities.each([this, e, &streamers, es](flecs::entity rhsE, Modules::Base::Streamer &rhsS) {
+            const auto rhsTr = rhsE.get<Modules::Base::Transform>();
+            const auto rhsST = rhsE.get<Modules::Base::Streamable>();
+            const auto lhsTr = e.get<Modules::Base::Transform>();
+
+            if (_isEntityVisible(rhsE, e, *rhsTr, rhsS, *rhsST, *lhsTr, *es)) {
+                streamers.push_back(rhsE);
+            }
+        });
+        return streamers;
+    }
+
 
     void ServerEngine::RemoveEntity(flecs::entity e) {
         if (e.is_alive()) {

@@ -19,14 +19,21 @@
 
 #include "utils/version.h"
 
+#include <optick.h>
+
 namespace Framework::Integrations::Client {
     Instance::Instance() {
+        OPTICK_START_CAPTURE();
         _networkingEngine = std::make_unique<Networking::Engine>();
         _presence    = std::make_unique<External::Discord::Wrapper>();
         _imguiApp    = std::make_unique<External::ImGUI::Wrapper>();
         _renderer    = std::make_unique<Graphics::Renderer>();
         _worldEngine = std::make_unique<World::ClientEngine>();
         _renderIO    = std::make_unique<Graphics::RenderIO>();
+    }
+
+    Instance::~Instance() {
+        OPTICK_STOP_CAPTURE();
     }
 
     ClientError Instance::Init(InstanceOptions &opts) {
@@ -57,6 +64,35 @@ namespace Framework::Integrations::Client {
         InitManagers();
         InitNetworkingMessages();
         PostInit();
+
+        // Init the render device
+        if (opts.useRenderer) {
+            _renderer->SetWindow(opts.rendererOptions.windowHandle);
+
+            switch (opts.rendererOptions.backend) {
+                case Graphics::RendererBackend::BACKEND_D3D_9:
+                    _renderer->GetD3D9Backend()->Init(opts.rendererOptions.d3d9.device, nullptr);
+                    break;
+                case Graphics::RendererBackend::BACKEND_D3D_11:
+                    _renderer->GetD3D11Backend()->Init(opts.rendererOptions.d3d11.device, opts.rendererOptions.d3d11.deviceContext);
+                    break;
+                default:
+                    Logging::GetLogger(FRAMEWORK_INNER_GRAPHICS)->info("[renderDevice] Device not implemented");
+                    break;
+            }
+        }
+
+        if (opts.useImGUI) {
+            // Init the ImGui internal instance
+            External::ImGUI::Config imguiConfig;
+            imguiConfig.renderBackend = opts.rendererOptions.backend;
+            imguiConfig.windowBackend = opts.rendererOptions.platform;
+            imguiConfig.renderer      = _renderer.get();
+            imguiConfig.windowHandle  = _renderer->GetWindow();
+            if (_imguiApp->Init(imguiConfig) != External::ImGUI::Error::IMGUI_NONE) {
+                Logging::GetLogger(FRAMEWORK_INNER_GRAPHICS)->info("ImGUI has failed to init");
+            }
+        }
 
         Framework::Logging::GetLogger(FRAMEWORK_INNER_CLIENT)->debug("Initialize success");
         _initialized = true;
@@ -90,6 +126,7 @@ namespace Framework::Integrations::Client {
     }
 
     void Instance::Update() {
+        OPTICK_EVENT();
         if (_presence && _presence->IsInitialized()) {
             _presence->Update();
         }
@@ -114,6 +151,7 @@ namespace Framework::Integrations::Client {
     }
 
     void Instance::Render() {
+        OPTICK_EVENT();
         if (_renderer && _renderer->IsInitialized()) {
             _renderer->Update();
         }
@@ -125,6 +163,7 @@ namespace Framework::Integrations::Client {
 
     void Instance::InitManagers() {
         _playerFactory.reset(new Integrations::Shared::Archetypes::PlayerFactory);
+        _streamingFactory.reset(new Integrations::Shared::Archetypes::StreamingFactory);
     }
 
     void Instance::InitNetworkingMessages() {
@@ -138,13 +177,18 @@ namespace Framework::Integrations::Client {
 
             net->Send(msg, SLNet::UNASSIGNED_RAKNET_GUID);
         });
-        net->RegisterMessage<ClientConnectionFinalized>(GameMessages::GAME_CONNECTION_FINALIZED, [this, net](SLNet::RakNetGUID guid, ClientConnectionFinalized *msg) {
+        net->RegisterMessage<ClientConnectionFinalized>(GameMessages::GAME_CONNECTION_FINALIZED, [this, net](SLNet::RakNetGUID __guid, ClientConnectionFinalized *msg) {
             Logging::GetLogger(FRAMEWORK_INNER_CLIENT)->debug("Connection request finalized");
             _worldEngine->OnConnect(net, msg->GetServerTickRate());
+            const auto guid = GetNetworkingEngine()->GetNetworkClient()->GetPeer()->GetMyGUID();
+
+            const auto newPlayer = GetWorldEngine()->CreateEntity(msg->GetEntityID());
+            GetStreamingFactory()->SetupClient(newPlayer, guid.g);
+            GetPlayerFactory()->SetupClient(newPlayer, guid.g);
 
             // Notify mod-level that network integration whole process succeeded
             if (_onConnectionFinalized) {
-                _onConnectionFinalized(msg->GetEntityID());
+                _onConnectionFinalized(newPlayer);
             }
         });
         net->RegisterMessage<ClientKick>(GameMessages::GAME_CONNECTION_KICKED, [this, net](SLNet::RakNetGUID guid, ClientKick *msg) {
@@ -178,6 +222,7 @@ namespace Framework::Integrations::Client {
                 return;
             }
             const auto e = _worldEngine->CreateEntity(msg->GetServerID());
+            _streamingFactory->SetupClient(e, msg->GetServerID());
 
             auto tr = e.get_mut<World::Modules::Base::Transform>();
             *tr     = msg->GetTransform();

@@ -8,6 +8,8 @@
 
 #include "client.h"
 
+#include <optick.h>
+
 namespace Framework::World {
     EngineError ClientEngine::Init() {
         const auto status = Engine::Init(nullptr); // assigned by OnConnect
@@ -26,10 +28,11 @@ namespace Framework::World {
     }
 
     void ClientEngine::Update() {
+        OPTICK_EVENT();
         Engine::Update();
     }
 
-    flecs::entity ClientEngine::GetEntityByServerID(flecs::entity_t id) {
+    flecs::entity ClientEngine::GetEntityByServerID(flecs::entity_t id) const {
         flecs::entity ent = {};
         _queryGetEntityByServerID.iter([&ent, id](flecs::iter it, Modules::Base::ServerID *rhs) {
             for (size_t i = 0; i < it.count(); i++) {
@@ -50,20 +53,21 @@ namespace Framework::World {
         return e;
     }
 
-    void ClientEngine::OnConnect(Networking::NetworkPeer *peer, float tickInterval) {
+    void ClientEngine::OnConnect(Networking::NetworkPeer *peer, float tickInterval)  {
         _networkPeer = peer;
 
-        _streamEntities = _world->system<Modules::Base::Transform, Modules::Base::Streamer, Modules::Base::Streamable>("StreamEntities")
+        _streamEntities = _world->system<Modules::Base::Transform, Modules::Base::Streamable>("StreamEntities")
                               .kind(flecs::PostUpdate)
                               .interval(tickInterval)
-                              .iter([this](flecs::iter it, Modules::Base::Transform *tr, Modules::Base::Streamer *s, Modules::Base::Streamable *rs) {
+                              .iter([this](flecs::iter it, Modules::Base::Transform *tr, Modules::Base::Streamable *rs) {
+                                  OPTICK_EVENT();
                                   const auto myGUID = _networkPeer->GetPeer()->GetMyGUID();
 
                                   for (size_t i = 0; i < it.count(); i++) {
                                       const auto &es = &rs[i];
 
-                                      if (es->events.updateProc && es->owner == myGUID.g) {
-                                          es->events.updateProc(_networkPeer, (SLNet::UNASSIGNED_RAKNET_GUID).g, it.entity(i));
+                                      if (es->GetBaseEvents().clientUpdateProc && es->owner == myGUID.g) {
+                                          es->GetBaseEvents().clientUpdateProc(_networkPeer, (SLNet::UNASSIGNED_RAKNET_GUID).g, it.entity(i));
                                       }
                                   }
                               });
@@ -73,6 +77,25 @@ namespace Framework::World {
         if (_streamEntities.is_alive()) {
             _streamEntities.destruct();
         }
+
+        _world->defer_begin();
+        _allStreamableEntities.iter([this](flecs::iter it, Modules::Base::Transform *tr, Modules::Base::Streamable *s) {
+            (void)tr;
+            (void)s;
+
+            for (size_t i = 0; i < it.count(); i++) {
+                if (_onEntityDestroyCallback) {
+                    if (!_onEntityDestroyCallback(it.entity(i))) {
+                        return;
+                    }
+                }
+
+                it.entity(i).destruct();
+            }
+        });
+        _world->defer_end();
+
+        _networkPeer = nullptr;
     }
 
 } // namespace Framework::World

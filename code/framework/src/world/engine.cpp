@@ -12,6 +12,8 @@
 
 #include <slikenet/types.h>
 
+#include <optick.h>
+
 namespace Framework::World {
     EngineError Engine::Init(Networking::NetworkPeer *networkPeer) {
         _networkPeer = networkPeer;
@@ -21,6 +23,7 @@ namespace Framework::World {
         // Register a base module
         _world->import<Modules::Base>();
 
+        _allStreamableEntities = _world->query_builder<Modules::Base::Transform, Modules::Base::Streamable>().build();
         _findAllStreamerEntities = _world->query_builder<Modules::Base::Streamer>().build();
 
         return EngineError::ENGINE_NONE;
@@ -31,10 +34,11 @@ namespace Framework::World {
     }
 
     void Engine::Update() {
+        OPTICK_EVENT();
         _world->progress();
     }
 
-    flecs::entity Engine::GetEntityByGUID(uint64_t guid) {
+    flecs::entity Engine::GetEntityByGUID(uint64_t guid) const {
         flecs::entity ourEntity = {};
         _findAllStreamerEntities.iter([&ourEntity, guid](flecs::iter &it, Modules::Base::Streamer *s) {
             for (auto i : it) {
@@ -46,5 +50,9 @@ namespace Framework::World {
         });
 
         return ourEntity;
+    }
+
+    flecs::entity Engine::WrapEntity(flecs::entity_t serverID) const {
+        return flecs::entity(_world->get_world(), serverID);
     }
 } // namespace Framework::World
