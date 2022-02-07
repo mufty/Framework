@@ -17,6 +17,7 @@
 #include <graphics/renderio.h>
 
 #include "networking/engine.h"
+#include "scripting/client.h"
 
 #include <functional>
 #include <memory>
@@ -57,6 +58,7 @@ namespace Framework::Integrations::Client {
         std::unique_ptr<Graphics::Renderer> _renderer;
         std::unique_ptr<World::ClientEngine> _worldEngine;
         std::unique_ptr<Graphics::RenderIO> _renderIO;
+        std::unique_ptr<Scripting::ClientEngine> _scripting;
 
         // gui
         std::unique_ptr<External::ImGUI::Wrapper> _imguiApp;

@@ -17,18 +17,6 @@ set(FRAMEWORK_SRC
     src/utils/states/machine.cpp
     src/utils/states/state.cpp
 
-    src/external/sentry/wrapper.cpp
-    src/external/firebase/wrapper.cpp
-    src/external/optick/wrapper.cpp
-
-    src/world/engine.cpp
-    src/world/modules/modules_impl.cpp
-
-    src/networking/network_peer.cpp
-    src/networking/errors.cpp
-    )
-
-set(FRAMEWORK_SERVER_SRC
     src/scripting/sdk.cpp
     src/scripting/engine.cpp
     src/scripting/events.cpp
@@ -43,6 +31,18 @@ set(FRAMEWORK_SERVER_SRC
     src/scripting/v8_helpers/v8_source_location.cpp
     src/scripting/v8_helpers/v8_try_catch.cpp
 
+    src/external/sentry/wrapper.cpp
+    src/external/firebase/wrapper.cpp
+    src/external/optick/wrapper.cpp
+
+    src/world/engine.cpp
+    src/world/modules/modules_impl.cpp
+
+    src/networking/network_peer.cpp
+    src/networking/errors.cpp
+    )
+
+set(FRAMEWORK_SERVER_SRC
     src/http/webserver.cpp
 
     src/services/masterlist.cpp
@@ -81,6 +81,7 @@ set(FRAMEWORK_CLIENT_SRC
 
     src/integrations/client/instance.cpp
     src/integrations/client/networking/engine.cpp
+    src/integrations/client/scripting/client.cpp
 )
 
 # Append the platform-dependent files to the related lists
@@ -164,6 +165,7 @@ if(WIN32)
 endif()
 link_shared_deps(FrameworkServer)
 target_link_libraries(FrameworkServer mongoose NodeJS libsig v8pp)
+target_link_libraries(FrameworkClient mongoose NodeJS libsig v8pp)
 
 # Platform-dependent post processing
 if (WIN32)

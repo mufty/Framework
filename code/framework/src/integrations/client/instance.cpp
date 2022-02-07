@@ -30,6 +30,7 @@ namespace Framework::Integrations::Client {
         _renderer    = std::make_unique<Graphics::Renderer>();
         _worldEngine = std::make_unique<World::ClientEngine>();
         _renderIO    = std::make_unique<Graphics::RenderIO>();
+        _scripting   = std::make_unique<Scripting::ClientEngine>();
         _playerFactory    = std::make_unique<Integrations::Shared::Archetypes::PlayerFactory>();
         _streamingFactory = std::make_unique<Integrations::Shared::Archetypes::StreamingFactory>();
     }
@@ -56,6 +57,10 @@ namespace Framework::Integrations::Client {
         if (_networkingEngine) {
             _networkingEngine->Init();
         }
+
+        _scripting->Init([&](Framework::Scripting::SDK *sdk) {
+            // sem idu builtins
+        });
 
         if (_worldEngine) {
             _worldEngine->Init();
